@@ -5,10 +5,11 @@ import os.path
 import shutil
 from scipy.io.matlab.mio import savemat, loadmat
 
+from keras.models import load_model
+model = load_model("CKPT_PATH")
 
 def denoiser(noisy):
-    # TODO: plug in your denoiser here
-    denoised = noisy
+    denoised = model.predict(noisy)
     return denoised
 
 
@@ -45,7 +46,7 @@ savemat(res_fn, {res_key: results})
 runtime = 0.0  # seconds / megapixel
 cpu_or_gpu = 0  # 0: GPU, 1: CPU
 use_metadata = 0  # 0: no use of metadata, 1: metadata used
-other = '(optional) any additional description or information'
+other = ''
 
 # prepare and save readme file
 readme_fn = os.path.join(work_dir, res_dir, 'readme.txt')  # Note: do not change 'readme.txt'
