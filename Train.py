@@ -9,7 +9,7 @@ import keras.backend as K
 from Model import get_unet
 import Utils
 
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 EPOCHS = 1000
 CKPT_PATH = "./ckpt/ckpt.mdl"
 LOG_PATH = "./log"
@@ -17,21 +17,17 @@ FIG_PATH = "./log/loss.jpg"
 
 def generate_data(data:list):
     while True:
-        inputs = []
-        outputs = []
+        inputs,outputs = [],[]
         for file_path in data:
             x,y = Utils.get_sample_from_file(file_path)
             inputs.append(x)
             outputs.append(y)
             if len(inputs) == BATCH_SIZE:
-                x = np.array(inputs)
-                y = np.array(outputs)
-                yield ({'input': x}, {'output': y})
-                inputs = []
-                outputs = []
-        x = np.array(inputs)
-        y = np.array(outputs)
-        yield ({'input': x}, {'output': y})
+                yield ({'input': np.array(inputs)},{'output': np.array(outputs)})
+                inputs,outputs = [],[]
+        if len(inputs) > 0:
+            yield ({'input': np.array(inputs)},{'output': np.array(outputs)})
+        
 
 def train(model:Model):
     train_data = []
@@ -45,6 +41,7 @@ def train(model:Model):
     history = model.fit_generator(generate_data(train_data),\
                         steps_per_epoch = ceil(len(train_data)/BATCH_SIZE),\
                         epochs = EPOCHS,\
+                        verbose = 2,\
                         callbacks=[checkpoint,tensorboard])
     return history
 
@@ -61,16 +58,15 @@ def test(model:Model):
 
 def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-    
     model = get_unet()
-    model.summary()
-
     history = train(model)
+
     plt.figure()
     plt.plot(history.history)
     plt.savefig(FIG_PATH)
-    #results = test(model)
-    #print(zip(model.metrics_names,results))
+
+    results = test(model)
+    print(zip(model.metrics_names,results))
 
 if __name__=='__main__':
     main()
