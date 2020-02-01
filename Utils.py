@@ -2,7 +2,6 @@ import scipy.io
 import os
 import h5py
 import numpy as np
-import pretty_errors
 
 import BayerUnifyAug
 

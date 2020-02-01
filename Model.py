@@ -1,17 +1,34 @@
-from keras.models import Model
+from keras.models import Model,Sequential
 from keras.layers.merge import add
 from keras.layers import Input, merge, Conv2D, MaxPooling2D, UpSampling2D, Dropout
 from keras.optimizers import Adam
 from keras.losses import mean_absolute_error
-from keras.metrics import mse,mae
+import keras.backend as K
 
-import pretty_errors
 from Utils import PATCH_SIZE
 
 LAYER_CONFIG = {"activation":"relu", "padding":"same", "kernel_initializer":"he_normal"}
 
+def psnr(y_true, y_pred):
+    rmse = K.mean(K.pow(K.flatten(y_true - y_pred), 2))
+    return 10 * K.log(1.0 / rmse)
+
+def ssim(y_true , y_pred):
+    u_true = K.mean(y_true)
+    u_pred = K.mean(y_pred)
+    var_true = K.var(y_true)
+    var_pred = K.var(y_pred)
+    std_true = K.sqrt(var_true)
+    std_pred = K.sqrt(var_pred)
+    c1 = K.square(0.01*7)
+    c2 = K.square(0.03*7)
+    ssim = (2 * u_true * u_pred + c1) * (2 * std_pred * std_true + c2)
+    denom = (u_true ** 2 + u_pred ** 2 + c1) * (var_pred + var_true + c2)
+    return ssim / denom
+
 def get_unet():
-    Inputs = Input((PATCH_SIZE, PATCH_SIZE, 4))
+    Inputs = Input((PATCH_SIZE, PATCH_SIZE, 4),name='input')
+
     EncConv1_1 = Conv2D(32, (3, 3), **LAYER_CONFIG)(Inputs)
     EncConv1_2 = Conv2D(32, (3, 3), **LAYER_CONFIG)(EncConv1_1)
     Pool1 = MaxPooling2D(pool_size=(2, 2))(EncConv1_2)
@@ -52,11 +69,10 @@ def get_unet():
     DecConv1_2 = Conv2D(32, (3, 3), **LAYER_CONFIG)(DecConv1_1)
     DecConv1_3 = Conv2D(4, (3, 3), **LAYER_CONFIG)(DecConv1_2)
 
-    Add0 = add([DecConv1_3,Inputs])
+    Add0 = add([DecConv1_3,Inputs],name='output')
 
-    model = Model(input=Inputs, output=Add0)
-
-    model.compile(optimizer=Adam(lr=2e-4,decay=2e-5), loss=mean_absolute_error, metrics=[mse,mae])
+    model = Model(inputs=Inputs, outputs=Add0)
+    model.compile(optimizer=Adam(lr=2e-4,decay=2e-5), loss=mean_absolute_error, metrics=[psnr,ssim])
 
     return model
 
