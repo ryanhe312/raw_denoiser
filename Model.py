@@ -11,7 +11,7 @@ LAYER_CONFIG = {"activation":"relu", "padding":"same", "kernel_initializer":"he_
 
 def psnr(y_true, y_pred):
     rmse = K.mean(K.pow(K.flatten(y_true - y_pred), 2))
-    return 10 * K.log(1.0 / rmse)/K.log(10)
+    return 10 * K.log(1.0 / rmse)/K.log(10.)
 
 def ssim(y_true , y_pred):
     u_true = K.mean(y_true)
