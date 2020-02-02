@@ -2,11 +2,13 @@ from keras.models import Model,Sequential
 from keras.layers.merge import add
 from keras.layers import Input, merge, Conv2D, MaxPooling2D, UpSampling2D, Dropout
 from keras.optimizers import Adam
-from keras.losses import mean_absolute_error
+from keras.losses import mean_squared_error
 import keras.backend as K
+import os
 
 from Utils import PATCH_SIZE
 
+MODEL_PATH = './ckpt/model.mdl'
 LAYER_CONFIG = {"activation":"relu", "padding":"same", "kernel_initializer":"he_normal"}
 
 def psnr(y_true, y_pred):
@@ -72,14 +74,16 @@ def get_unet():
     Add0 = add([DecConv1_3,Inputs],name='output')
 
     model = Model(inputs=Inputs, outputs=Add0)
-    model.compile(optimizer=Adam(lr=2e-4,decay=2e-5), loss=mean_absolute_error, metrics=[psnr,ssim])
+    model.compile(optimizer=Adam(lr=2e-4,decay=2e-5), loss=mean_squared_error, metrics=[psnr,ssim])
 
     return model
 
 
 def main():
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     model=get_unet()
     model.summary()
+    model.save(MODEL_PATH)
 
 if __name__=='__main__':
     main()

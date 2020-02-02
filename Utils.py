@@ -15,6 +15,9 @@ PATCH_SIZE = 256
 TARGET_PATTERN = 'BGGR'
 UNIFY_MODE = 'crop'
 
+DATA_TYPE = ['train','test']
+TEST_SCENE = '001'
+
 def meta_read(info):
     info = info.split('_')
     scene_instance_number       = info[0]
@@ -27,12 +30,19 @@ def meta_read(info):
 
     return scene_instance_number,scene_number,MODEL_BAYER[smartphone_code]
 
-def get_file_list():
+def get_file_list(data_type:str):
+    if data_type not in DATA_TYPE:
+        return None
+
     file_lists = []
     folder_names = os.listdir(os.path.join(SIDD_PATH,'Data'))
 
     for folder_name in folder_names:
-        scene_instance_number,_,_ = meta_read(folder_name)
+        scene_instance_number,scene_number,_ = meta_read(folder_name)
+        if data_type == 'train' and  scene_number == TEST_SCENE:
+            continue
+        if data_type == 'test'  and  scene_number != TEST_SCENE:
+            continue
         for path in NOISY_PATH:
             file_lists.append(os.path.join(SIDD_PATH,'Data',folder_name,scene_instance_number+path))
 
@@ -81,6 +91,23 @@ def get_sample_from_file(file_path):
     noisy_4ch[:,:,3] = noisy[1::2, 1::2]
 
     return noisy_4ch, gt_4ch
+
+from keras.utils import Sequence
+class DataGenerator(Sequence):
+    def __init__(self, data:list, batch_size:int):
+        self.data = data
+        self.batch_size = batch_size
+    def __len__(self):
+        return int(np.ceil(len(self.data) / float(self.batch_size)))
+    def __getitem__(self, idx):
+        file_paths = self.data[idx * self.batch_size:(idx + 1) * self.batch_size]
+        batch_x = []
+        batch_y = []
+        for file_path in file_paths:
+            x,y = get_sample_from_file(file_path)
+            batch_x.append(x)
+            batch_y.append(y)
+        return np.array(batch_x),np.array(batch_y)
 
 def main():
     pass

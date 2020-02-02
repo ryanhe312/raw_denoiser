@@ -5,8 +5,10 @@ import os.path
 import shutil
 from scipy.io.matlab.mio import savemat, loadmat
 
-from keras.models import load_model
-model = load_model("CKPT_PATH")
+from Model import get_unet
+from Train import CKPT_PATH
+model = get_unet()
+model.load_weights(CKPT_PATH)
 
 def denoiser(noisy):
     denoised = model.predict(noisy)

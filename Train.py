@@ -1,72 +1,54 @@
 from keras.callbacks import ModelCheckpoint, TensorBoard
 from keras.models import Model
-from math import ceil
 import os
 import matplotlib.pyplot as plt
 import numpy as np
 import keras.backend as K
 
 from Model import get_unet
-import Utils
+from Utils import get_file_list, DataGenerator
 
-BATCH_SIZE = 8
-EPOCHS = 1000
+BATCH_SIZE = 4
+EPOCHS = 300
 CKPT_PATH = "./ckpt/ckpt.mdl"
 LOG_PATH = "./log"
-FIG_PATH = "./log/loss.jpg"
-
-def generate_data(data:list):
-    while True:
-        inputs,outputs = [],[]
-        for file_path in data:
-            x,y = Utils.get_sample_from_file(file_path)
-            inputs.append(x)
-            outputs.append(y)
-            if len(inputs) == BATCH_SIZE:
-                yield ({'input': np.array(inputs)},{'output': np.array(outputs)})
-                inputs,outputs = [],[]
-        if len(inputs) > 0:
-            yield ({'input': np.array(inputs)},{'output': np.array(outputs)})
+FIG_PATH = "./loss.jpg"
         
 
 def train(model:Model):
-    train_data = []
-    for file_path in Utils.get_file_list():
-        _,scene_number,_ = Utils.meta_read(file_path.split('/')[-2])
-        if scene_number != '001':
-           train_data.append(file_path) 
+    train_data = get_file_list('train')
 
     checkpoint = ModelCheckpoint(CKPT_PATH, monitor='loss',verbose=1, save_best_only=True)
     tensorboard = TensorBoard(log_dir=LOG_PATH)
-    history = model.fit_generator(generate_data(train_data),\
-                        steps_per_epoch = ceil(len(train_data)/BATCH_SIZE),\
-                        epochs = EPOCHS,\
-                        verbose = 2,\
-                        callbacks=[checkpoint,tensorboard])
+    history = model.fit_generator(DataGenerator(train_data,BATCH_SIZE),\
+                                steps_per_epoch = int(np.ceil(len(train_data)/BATCH_SIZE)),\
+                                epochs = EPOCHS,\
+                                verbose = 1,\
+                                callbacks=[checkpoint,tensorboard])
+    #validation_data = DataGenerator(val_data,BATCH_SIZE)
+    #validation_steps = int(np.ceil(len(val_data)/BATCH_SIZE))
     return history
 
 def test(model:Model):
-    test_data = []
-    for file_path in Utils.get_file_list():
-        _,scene_number,_ = Utils.meta_read(file_path.split('/')[-2])
-        if scene_number == '001':
-           test_data.append(file_path) 
+    test_data = get_file_list('test')
 
-    results = model.evaluate_generator(generate_data(test_data),\
-                                       steps_per_epoch = ceil(len(test_data)/BATCH_SIZE))
+    results = model.evaluate_generator(DataGenerator(test_data,BATCH_SIZE),\
+                                       steps = int(np.ceil(len(test_data)/BATCH_SIZE)),\
+                                       verbose = 1)
     return results
 
 def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     model = get_unet()
+    model.load_weights(CKPT_PATH)
     history = train(model)
 
     plt.figure()
-    plt.plot(history.history)
+    plt.plot(history.history['loss'])
     plt.savefig(FIG_PATH)
 
-    results = test(model)
-    print(zip(model.metrics_names,results))
+    #results = test(model)
+    #print(dict(zip(model.metrics_names,results)))
 
 if __name__=='__main__':
     main()
