@@ -1,13 +1,19 @@
 #!/usr/bin/env python
 
 import numpy as np
+import os
 import os.path
 import shutil
 from scipy.io.matlab.mio import savemat, loadmat
 
-from Model import get_unet
-from Train import CKPT_PATH
-model = get_unet()
+from keras.models import load_model
+import Model
+
+CKPT_PATH = './ckpt/ckpt.ckpt'
+MODEL_PATH = './ckpt/model.mdl' 
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+model = load_model(MODEL_PATH)
 model.load_weights(CKPT_PATH)
 
 def denoiser(noisy):
@@ -28,11 +34,17 @@ noisy_mat = loadmat(os.path.join(work_dir, noisy_fn))[noisy_key]
 
 # denoise
 n_im, h, w = noisy_mat.shape
-results = noisy_mat.copy()
-for i in range(n_im):
-    noisy = np.reshape(noisy_mat[i, :, :], (h, w))
-    denoised = denoiser(noisy)
-    results[i, :, :] = denoised
+#results = noisy_mat.copy()
+#for i in range(n_im):
+#    noisy = np.reshape(noisy_mat[i, :, :], (h, w))
+#    denoised = denoiser(noisy)
+#    results[i, :, :] = denoised
+noisy_4ch = np.empty([n_im,h//2, w//2, 4])
+noisy_4ch[:,:,:,0] = noisy_mat[:,0::2, 0::2]
+noisy_4ch[:,:,:,1] = noisy_mat[:,0::2, 1::2]
+noisy_4ch[:,:,:,2] = noisy_mat[:,1::2, 0::2]
+noisy_4ch[:,:,:,3] = noisy_mat[:,1::2, 1::2]
+results = denoiser(noisy_4ch)
 
 # create results directory
 res_dir = 'res_dir'

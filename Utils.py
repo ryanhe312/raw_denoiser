@@ -18,7 +18,7 @@ UNIFY_MODE = 'crop'
 DATA_TYPE = ['train','test']
 TEST_SCENE = '001'
 
-def meta_read(info):
+def meta_read(info:str):
     info = info.split('_')
     scene_instance_number       = info[0]
     scene_number                = info[1]
@@ -48,11 +48,11 @@ def get_file_list(data_type:str):
 
     return file_lists
 
-def h5py_loadmat(file_path):
+def h5py_loadmat(file_path:str):
     with h5py.File(file_path, 'r') as f:
         return np.array(f.get('x'))
 
-def get_sample_from_file(file_path):
+def get_sample_from_file(file_path:str):
     noisy_path = file_path
     gt_path = file_path.replace('NOISY', 'GT')
     _,_,bayer_pattern = meta_read(file_path.split('/')[-2])
