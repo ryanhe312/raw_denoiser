@@ -1,38 +1,14 @@
 from keras.models import Model,load_model
 from keras.layers.merge import add
 from keras.layers import Input, merge, Conv2D, MaxPooling2D, UpSampling2D, Dropout
-from keras.optimizers import Adam
-from keras.losses import mse
 from os import environ
-import keras.metrics
-import keras.backend as K
 
-PATCH_SIZE = 128
+PATCH_SIZE = 256
 
 MODEL_PATH = './ckpt/model.mdl'
 LAYER_CONFIG = {"activation":"relu", "padding":"same", "kernel_initializer":"he_normal"}
 
 environ["CUDA_VISIBLE_DEVICES"] = "0"
-
-def psnr(y_true, y_pred):
-    rmse = K.mean(K.pow(K.flatten(y_true - y_pred), 2))
-    return 10 * K.log(1.0 / rmse)/K.log(10.)
-
-def ssim(y_true , y_pred):
-    u_true = K.mean(y_true)
-    u_pred = K.mean(y_pred)
-    var_true = K.var(y_true)
-    var_pred = K.var(y_pred)
-    std_true = K.sqrt(var_true)
-    std_pred = K.sqrt(var_pred)
-    c1 = K.square(0.01*7)
-    c2 = K.square(0.03*7)
-    ssim = (2 * u_true * u_pred + c1) * (2 * std_pred * std_true + c2)
-    denom = (u_true ** 2 + u_pred ** 2 + c1) * (var_pred + var_true + c2)
-    return ssim / denom
-
-keras.metrics.psnr = psnr
-keras.metrics.ssim = ssim
 
 def get_unet():
     Inputs = Input((PATCH_SIZE, PATCH_SIZE, 4),name='input')
@@ -80,7 +56,6 @@ def get_unet():
     Add0 = add([DecConv1_3,Inputs],name='output')
 
     model = Model(inputs=Inputs, outputs=Add0)
-    model.compile(optimizer=Adam(lr=2e-4,decay=2e-5), loss=mse, metrics=[psnr,ssim])
 
     return model
 

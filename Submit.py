@@ -11,10 +11,10 @@ import Model
 import BayerUnifyAug
 
 CKPT_PATH = './ckpt/ckpt.ckpt'
-MODEL_PATH = './ckpt/model.mdl' 
+MODEL_PATH = './ckpt/model-128.mdl' 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-model = load_model(MODEL_PATH)
+model = load_model(MODEL_PATH,compile=False)
 model.load_weights(CKPT_PATH)
 
 def denoiser(noisy):
