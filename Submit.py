@@ -8,6 +8,7 @@ from scipy.io.matlab.mio import savemat, loadmat
 
 from keras.models import load_model
 import Model
+import BayerUnifyAug
 
 CKPT_PATH = './ckpt/ckpt.ckpt'
 MODEL_PATH = './ckpt/model.mdl' 
@@ -32,6 +33,20 @@ noisy_fn = 'siddplus_valid_noisy_raw.mat'
 noisy_key = 'siddplus_valid_noisy_raw'
 noisy_mat = loadmat(os.path.join(work_dir, noisy_fn))[noisy_key]
 
+# bayer_filp
+BAYER_LIST =    ['BGGR', 'BGGR', 'BGGR', 'BGGR',\
+                 'BGGR', 'BGGR', 'BGGR', 'BGGR',\
+                 'BGGR', 'BGGR', 'BGGR', 'BGGR',\
+                 'BGGR', 'BGGR', 'BGGR', 'BGGR',\
+                 'RGGB', 'RGGB', 'RGGB', 'RGGB',\
+                 'RGGB', 'RGGB', 'RGGB', 'RGGB',\
+                 'RGGB', 'RGGB', 'RGGB', 'RGGB',\
+                 'BGGR', 'BGGR', 'BGGR', 'BGGR']
+for i in range(1024):
+    bayer_pattern = BAYER_LIST[i//32]
+    if bayer_pattern == 'RGGB':
+        noisy_mat[i,:,:] = noisy_mat[i,::-1,::-1] 
+
 # denoise
 n_im, h, w = noisy_mat.shape
 #results = noisy_mat.copy()
@@ -45,6 +60,12 @@ noisy_4ch[:,:,:,1] = noisy_mat[:,0::2, 1::2]
 noisy_4ch[:,:,:,2] = noisy_mat[:,1::2, 0::2]
 noisy_4ch[:,:,:,3] = noisy_mat[:,1::2, 1::2]
 results = denoiser(noisy_4ch)
+
+# bayer_filp
+for i in range(1024):
+    bayer_pattern = BAYER_LIST[i//32]
+    if bayer_pattern == 'RGGB':
+        results[i,:,:] = results[i,::-1,::-1] 
 
 # create results directory
 res_dir = 'res_dir'

@@ -7,10 +7,10 @@ import Model
 import Utils
 
 BATCH_SIZE = 4
-EPOCHS = 300
+EPOCHS = 150
 
-CKPT_PATH = "./ckpt/ckpt3-psnr35-ssim95.ckpt"
-MODEL_PATH = './ckpt/model3.mdl'
+CKPT_PATH = "./ckpt/ckpt.ckpt"
+MODEL_PATH = './ckpt/model.mdl'
 
 LOG_PATH = "./log"
 LOSS_PATH = "./loss.txt"
@@ -41,15 +41,15 @@ def test(model):
 
 def main():
     model = load_model(MODEL_PATH)
-    model.load_weights(CKPT_PATH)
+    #model.load_weights(CKPT_PATH)
     
-    #history = train(model)
-    #loss = open(LOSS_PATH,'a')
-    #loss.writelines('\n'.join(history.history['loss'])+'\n')
-    #loss.close()
+    history = train(model)
+    loss = open(LOSS_PATH,'a')
+    loss.writelines('\n'.join(history.history['loss'])+'\n')
+    loss.close()
 
-    results = test(model)
-    print(dict(zip(model.metrics_names,results)))
+    #results = test(model)
+    #print(dict(zip(model.metrics_names,results)))
 
 if __name__=='__main__':
     main()

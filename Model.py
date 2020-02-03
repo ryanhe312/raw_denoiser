@@ -7,7 +7,7 @@ from os import environ
 import keras.metrics
 import keras.backend as K
 
-PATCH_SIZE = 256
+PATCH_SIZE = 128
 
 MODEL_PATH = './ckpt/model.mdl'
 LAYER_CONFIG = {"activation":"relu", "padding":"same", "kernel_initializer":"he_normal"}
