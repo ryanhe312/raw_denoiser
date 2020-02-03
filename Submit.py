@@ -10,9 +10,9 @@ from keras.models import load_model
 import Model
 import BayerUnifyAug
 
-CKPT_PATH = './ckpt/ckpt.ckpt'
+CKPT_PATH = './ckpt/ckpt4-128-psnr35-ssim97.ckpt'
 MODEL_PATH = './ckpt/model-128.mdl' 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 model = load_model(MODEL_PATH,compile=False)
 model.load_weights(CKPT_PATH)
@@ -32,6 +32,9 @@ work_dir = '/home/ruianhe/siddplus/valid'
 noisy_fn = 'siddplus_valid_noisy_raw.mat'
 noisy_key = 'siddplus_valid_noisy_raw'
 noisy_mat = loadmat(os.path.join(work_dir, noisy_fn))[noisy_key]
+
+# check shape and dtype
+print('noisy_mat:',noisy_mat.shape,noisy_mat.dtype)
 
 # bayer_filp
 BAYER_LIST =    ['BGGR', 'BGGR', 'BGGR', 'BGGR',\
@@ -59,13 +62,27 @@ noisy_4ch[:,:,:,0] = noisy_mat[:,0::2, 0::2]
 noisy_4ch[:,:,:,1] = noisy_mat[:,0::2, 1::2]
 noisy_4ch[:,:,:,2] = noisy_mat[:,1::2, 0::2]
 noisy_4ch[:,:,:,3] = noisy_mat[:,1::2, 1::2]
-results = denoiser(noisy_4ch)
+
+import time
+t1 = time.time()
+results_4ch = denoiser(noisy_4ch)
+t2 = time.time()
+print('time:',t2-t1)
+
+results = np.empty([n_im, h, w],dtype=noisy_mat.dtype)
+results[:,0::2, 0::2] = results_4ch[:,:,:,0]
+results[:,0::2, 1::2] = results_4ch[:,:,:,1]
+results[:,1::2, 0::2] = results_4ch[:,:,:,2]
+results[:,1::2, 1::2] = results_4ch[:,:,:,3]
 
 # bayer_filp
 for i in range(1024):
     bayer_pattern = BAYER_LIST[i//32]
     if bayer_pattern == 'RGGB':
         results[i,:,:] = results[i,::-1,::-1] 
+
+# check shape and dtype
+print('result:',results.shape,results.dtype)
 
 # create results directory
 res_dir = 'res_dir'
@@ -78,7 +95,7 @@ savemat(res_fn, {res_key: results})
 
 # submission indormation
 # TODO: update the values below; the evaluation code will parse them
-runtime = 0.0  # seconds / megapixel
+runtime = (t2-t1)/(256*256*1024/1000000)  # seconds / megapixel
 cpu_or_gpu = 0  # 0: GPU, 1: CPU
 use_metadata = 0  # 0: no use of metadata, 1: metadata used
 other = ''

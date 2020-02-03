@@ -10,7 +10,7 @@ import Model
 import Utils
 
 BATCH_SIZE = 4
-EPOCHS = 100
+EPOCHS = 200
 
 CKPT_PATH = "./ckpt/ckpt.ckpt"
 MODEL_PATH = './ckpt/model-128.mdl'
@@ -18,7 +18,7 @@ MODEL_PATH = './ckpt/model-128.mdl'
 LOG_PATH = "./log"
 LOSS_PATH = "./loss.txt"
 
-environ["CUDA_VISIBLE_DEVICES"] = "0"      
+environ["CUDA_VISIBLE_DEVICES"] = "2"      
 
 def psnr(y_true, y_pred):
     rmse = K.mean(K.pow(K.flatten(y_true - y_pred), 2))
@@ -70,8 +70,8 @@ def main():
     log.writelines([str(loss)+'\n' for loss in history.history['loss']])
     log.close()
 
-    #results = test(model)
-    #print(dict(zip(model.metrics_names,results)))
+    results = test(model)
+    print(dict(zip(model.metrics_names,results)))
 
 if __name__=='__main__':
     main()
