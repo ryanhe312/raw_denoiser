@@ -10,10 +10,10 @@ import Model
 import Utils
 
 BATCH_SIZE = 4
-EPOCHS = 200
+EPOCHS = 100
 
-CKPT_PATH = "./ckpt/ckpt.ckpt"
-MODEL_PATH = './ckpt/model-128.mdl'
+CKPT_PATH = "./ckpt/model-prelu/ckpt.ckpt"
+MODEL_PATH = './ckpt/model-prelu/model-128.mdl'
 
 LOG_PATH = "./log"
 LOSS_PATH = "./loss.txt"
@@ -43,7 +43,6 @@ def train(model):
     checkpoint = ModelCheckpoint(CKPT_PATH, monitor='loss',verbose=1, save_best_only=True)
     tensorboard = TensorBoard(log_dir=LOG_PATH)
     
-    model.compile(optimizer=Adam(lr=2e-4,decay=2e-5,amsgrad=True), loss=mse, metrics=[psnr,ssim])
     history = model.fit_generator(Utils.DataGenerator(train_data,BATCH_SIZE),\
                                 steps_per_epoch = int(ceil(len(train_data)/BATCH_SIZE)),\
                                 epochs = EPOCHS,\
@@ -64,11 +63,11 @@ def test(model):
 def main():
     model = load_model(MODEL_PATH,compile=False)
     #model.load_weights(CKPT_PATH)
+    model.compile(optimizer=Adam(lr=2e-4,decay=2e-5,amsgrad=True), loss=mse, metrics=[psnr,ssim])
     
     history = train(model)
-    log = open(LOSS_PATH,'a')
-    log.writelines([str(loss)+'\n' for loss in history.history['loss']])
-    log.close()
+    with open(LOSS_PATH,'a') as log:
+        log.writelines([str(loss)+'\n' for loss in history.history['loss']])
 
     results = test(model)
     print(dict(zip(model.metrics_names,results)))
