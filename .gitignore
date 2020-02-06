@@ -1,6 +1,6 @@
 .vscode/
 __pycache__/
-ckpt/
+model-*/
 log/
 log.txt
 loss.txt

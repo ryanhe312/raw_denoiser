@@ -5,10 +5,6 @@ from os import environ
 
 PATCH_SIZE = 128
 
-MODEL_PATH = './ckpt/model-prelu/model.mdl'
-
-environ["CUDA_VISIBLE_DEVICES"] = "2"
-
 def PReLUConv(num_filters):
     def func(x):
         x = Conv2D(num_filters,kernel_size=(3,3),padding='same',kernel_initializer='he_normal')(x)
@@ -119,9 +115,10 @@ def get_unet():
 
 
 def main():
+    environ["CUDA_VISIBLE_DEVICES"] = "2"
     model=get_resnet()
     model.summary()
-    model.save(MODEL_PATH)
+    model.save('./model-resnet/model-128.mdl')
 
 if __name__=='__main__':
     main()

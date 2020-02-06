@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 import numpy as np
 import os
 import os.path
@@ -10,8 +8,9 @@ from keras.models import load_model
 import Model
 import BayerUnifyAug
 
-CKPT_PATH = './ckpt/ckpt4-128-psnr35-ssim97.ckpt'
-MODEL_PATH = './ckpt/model-128.mdl' 
+CKPT_PATH = "./model-resnet/ckpt-128-mae-adam-0.0002.ckpt"
+MODEL_PATH = './model-resnet/model-128.mdl'
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 model = load_model(MODEL_PATH,compile=False)

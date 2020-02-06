@@ -12,6 +12,7 @@ NOISY_PATH = ['_NOISY_RAW_010.MAT','_NOISY_RAW_011.MAT']
 MODEL_BAYER = {'GP':'BGGR','IP':'RGGB','S6':'GRBG','N6':'BGGR','G4':'BGGR'}
 
 PATCH_SIZE = 128
+BATCH_LENGTH = 3
 TARGET_PATTERN = 'BGGR'
 UNIFY_MODE = 'crop'
 
@@ -50,7 +51,7 @@ def get_file_list(data_type:str):
 
 def h5py_loadmat(file_path:str):
     with h5py.File(file_path, 'r') as f:
-        return np.array(f.get('x'))
+        return np.array(f.get('x'),dtype=np.float32)
 
 def get_sample_from_file(file_path:str):
     noisy_path = file_path
@@ -69,48 +70,68 @@ def get_sample_from_file(file_path:str):
 
     w, h = gt.shape
     
-    s_x = (np.random.random_integers(0, w - PATCH_SIZE*2)//2)*2
-    s_y = (np.random.random_integers(0, h - PATCH_SIZE*2)//2)*2
-    e_x = s_x + PATCH_SIZE*2
-    e_y = s_y + PATCH_SIZE*2
+    s_x = (np.random.random_integers(0, w - BATCH_LENGTH*PATCH_SIZE*2)//2)*2
+    s_y = (np.random.random_integers(0, h - BATCH_LENGTH*PATCH_SIZE*2)//2)*2
     
-    gt = gt[s_x:e_x, s_y:e_y]
-    noisy = noisy[s_x:e_x, s_y:e_y]
+    gt_batch    = np.empty([BATCH_LENGTH**2, PATCH_SIZE*2, PATCH_SIZE*2])
+    noisy_batch = np.empty([BATCH_LENGTH**2, PATCH_SIZE*2, PATCH_SIZE*2])
 
-    gt_4ch = np.empty([PATCH_SIZE, PATCH_SIZE, 4])
-    noisy_4ch = np.empty([PATCH_SIZE, PATCH_SIZE, 4])
+    for x in range(BATCH_LENGTH):
+        for y in range(BATCH_LENGTH):
+            e_x = s_x+x*PATCH_SIZE*2
+            e_y = s_y+y*PATCH_SIZE*2
+            gt_batch    [y+x*BATCH_LENGTH,:,:] = gt     [e_x:e_x+PATCH_SIZE*2,e_y:e_y+PATCH_SIZE*2]
+            noisy_batch [y+x*BATCH_LENGTH,:,:] = noisy  [e_x:e_x+PATCH_SIZE*2,e_y:e_y+PATCH_SIZE*2]
+
+    gt_4ch    = np.empty([BATCH_LENGTH**2, PATCH_SIZE, PATCH_SIZE, 4])
+    noisy_4ch = np.empty([BATCH_LENGTH**2, PATCH_SIZE, PATCH_SIZE, 4])
     
-    gt_4ch[:,:,0] = gt[0::2, 0::2]
-    gt_4ch[:,:,1] = gt[0::2, 1::2]
-    gt_4ch[:,:,2] = gt[1::2, 0::2]
-    gt_4ch[:,:,3] = gt[1::2, 1::2]
+    gt_4ch[:,:,:,0] = gt_batch[:,0::2, 0::2]
+    gt_4ch[:,:,:,1] = gt_batch[:,0::2, 1::2]
+    gt_4ch[:,:,:,2] = gt_batch[:,1::2, 0::2]
+    gt_4ch[:,:,:,3] = gt_batch[:,1::2, 1::2]
     
-    noisy_4ch[:,:,0] = noisy[0::2, 0::2]
-    noisy_4ch[:,:,1] = noisy[0::2, 1::2]
-    noisy_4ch[:,:,2] = noisy[1::2, 0::2]
-    noisy_4ch[:,:,3] = noisy[1::2, 1::2]
+    noisy_4ch[:,:,:,0] = noisy_batch[:,0::2, 0::2]
+    noisy_4ch[:,:,:,1] = noisy_batch[:,0::2, 1::2]
+    noisy_4ch[:,:,:,2] = noisy_batch[:,1::2, 0::2]
+    noisy_4ch[:,:,:,3] = noisy_batch[:,1::2, 1::2]
 
     return noisy_4ch, gt_4ch
 
 from keras.utils import Sequence
 class DataGenerator(Sequence):
-    def __init__(self, data:list, batch_size:int):
+    def __init__(self, data:list):
         self.data = data
-        self.batch_size = batch_size
     def __len__(self):
-        return int(np.ceil(len(self.data) / float(self.batch_size)))
+        return len(self.data)
     def __getitem__(self, idx):
-        file_paths = self.data[idx * self.batch_size:(idx + 1) * self.batch_size]
-        batch_x = []
-        batch_y = []
-        for file_path in file_paths:
-            x,y = get_sample_from_file(file_path)
-            batch_x.append(x)
-            batch_y.append(y)
-        return np.array(batch_x),np.array(batch_y)
+        file_path = self.data[idx]
+        return get_sample_from_file(file_path)
+    def on_epoch_end(self):
+        np.random.shuffle(self.data)
+
+def psnr(y_true, y_pred):
+    rmse = np.mean(np.power(y_true.flatten() - y_pred.flatten(), 2))
+    return 10 * np.log(1.0 / rmse)/np.log(10.)
+
+def ssim(y_true , y_pred):
+    u_true = np.mean(y_true)
+    u_pred = np.mean(y_pred)
+    var_true = np.var(y_true)
+    var_pred = np.var(y_pred)
+    std_true = np.sqrt(var_true)
+    std_pred = np.sqrt(var_pred)
+    c1 = np.square(0.01*7)
+    c2 = np.square(0.03*7)
+    ssim = (2 * u_true * u_pred + c1) * (2 * std_pred * std_true + c2)
+    denom = (u_true ** 2 + u_pred ** 2 + c1) * (var_pred + var_true + c2)
+    return ssim / denom
 
 def main():
-    pass
+    test = DataGenerator(get_file_list('test'))
+    x,y = test.__getitem__(1)
+    print('psnr:',psnr(x,y))
+    print('ssim:',ssim(x,y))
 
 if __name__ == '__main__':
     main()

@@ -1,24 +1,15 @@
 from keras.callbacks import ModelCheckpoint, TensorBoard
 from keras.models import load_model
-from keras.optimizers import Adam
-from keras.losses import mse
+from keras.optimizers import Adam,SGD
+from keras.losses import mse,mae
 from math import ceil
-from os import environ
+from os import environ,makedirs,path
 import keras.backend as K
 
 import Model 
 import Utils
 
-BATCH_SIZE = 4
-EPOCHS = 100
-
-CKPT_PATH = "./ckpt/model-prelu/ckpt.ckpt"
-MODEL_PATH = './ckpt/model-prelu/model-128.mdl'
-
-LOG_PATH = "./log"
-LOSS_PATH = "./loss.txt"
-
-environ["CUDA_VISIBLE_DEVICES"] = "2"      
+EPOCHS = 50  
 
 def psnr(y_true, y_pred):
     rmse = K.mean(K.pow(K.flatten(y_true - y_pred), 2))
@@ -37,40 +28,46 @@ def ssim(y_true , y_pred):
     denom = (u_true ** 2 + u_pred ** 2 + c1) * (var_pred + var_true + c2)
     return ssim / denom
 
-def train(model):
+def train(model,ckpt_path,log_path):
     train_data = Utils.get_file_list('train')
+    val_data = Utils.get_file_list('test')
 
-    checkpoint = ModelCheckpoint(CKPT_PATH, monitor='loss',verbose=1, save_best_only=True)
-    tensorboard = TensorBoard(log_dir=LOG_PATH)
+    makedirs(path.dirname(ckpt_path),exist_ok=True)
+    makedirs(log_path,exist_ok=True)
+
+    checkpoint = ModelCheckpoint(ckpt_path, monitor='loss',verbose=1, save_best_only=True)
+    tensorboard = TensorBoard(log_dir=log_path)
     
-    history = model.fit_generator(Utils.DataGenerator(train_data,BATCH_SIZE),\
-                                steps_per_epoch = int(ceil(len(train_data)/BATCH_SIZE)),\
+    history = model.fit_generator(Utils.DataGenerator(train_data),\
+                                steps_per_epoch = len(train_data),\
                                 epochs = EPOCHS,\
-                                verbose = 1,\
-                                callbacks=[checkpoint,tensorboard])
-    #validation_data = Utils.DataGenerator(val_data,BATCH_SIZE)
-    #validation_steps = int(np.ceil(len(val_data)/BATCH_SIZE))
+                                verbose = 2,\
+                                callbacks=[checkpoint,tensorboard],\
+                                validation_data = Utils.DataGenerator(val_data),\
+                                validation_steps = len(val_data))
     return history
 
 def test(model):
     test_data = Utils.get_file_list('test')
 
-    results = model.evaluate_generator(Utils.DataGenerator(test_data,BATCH_SIZE),\
-                                       steps = int(ceil(len(test_data)/BATCH_SIZE)),\
-                                       verbose = 1)
+    results = model.evaluate_generator(Utils.DataGenerator(test_data),\
+                                       steps = len(test_data),\
+                                       verbose = 0)
     return results
 
 def main():
-    model = load_model(MODEL_PATH,compile=False)
-    #model.load_weights(CKPT_PATH)
-    model.compile(optimizer=Adam(lr=2e-4,decay=2e-5,amsgrad=True), loss=mse, metrics=[psnr,ssim])
-    
-    history = train(model)
-    with open(LOSS_PATH,'a') as log:
-        log.writelines([str(loss)+'\n' for loss in history.history['loss']])
+    environ["CUDA_VISIBLE_DEVICES"] = "2"    
+    size, mode, lr= 128, 'mae-adam', 2e-4
 
-    results = test(model)
-    print(dict(zip(model.metrics_names,results)))
+    model = load_model('./model-resnet/model-128.mdl',compile=False)
+    #model.load_weights('./model-resnet/ckpt-128-mse-0.0002-0.ckpt')
+    model.compile(optimizer=Adam(lr=lr), loss=mae, metrics=[psnr,ssim])
+
+    model_name = 'ckpt-'+str(size)+'-'+str(mode)+'-'+str(lr)
+    history = train(model,'./model-resnet/'+model_name+'.ckpt','./log/'+model_name)
+
+    #results = test(model)
+    #print(dict(zip(model.metrics_names,results)))
 
 if __name__=='__main__':
     main()
