@@ -5,10 +5,9 @@ import shutil
 from scipy.io.matlab.mio import savemat, loadmat
 
 from keras.models import load_model
-import Model
 import BayerUnifyAug
 
-CKPT_PATH = "./model-resnet/ckpt-128-mae-adam-0.0002.ckpt"
+CKPT_PATH = "./model-resnet/ckpt-128-mae-adam-2e-06.ckpt"
 MODEL_PATH = './model-resnet/model-128.mdl'
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"

@@ -9,7 +9,7 @@ import keras.backend as K
 import Model 
 import Utils
 
-EPOCHS = 50  
+EPOCHS = 10 
 
 def psnr(y_true, y_pred):
     rmse = K.mean(K.pow(K.flatten(y_true - y_pred), 2))
@@ -57,13 +57,13 @@ def test(model):
 
 def main():
     environ["CUDA_VISIBLE_DEVICES"] = "2"    
-    size, mode, lr= 128, 'mae-adam', 2e-4
+    size, opt, lr, loss= 128, 'adam', 1e-4, 'mae'
 
     model = load_model('./model-resnet/model-128.mdl',compile=False)
-    #model.load_weights('./model-resnet/ckpt-128-mse-0.0002-0.ckpt')
+    #model.load_weights('./model-resnet/ckpt-128-mae-adam-0.0002.ckpt')
     model.compile(optimizer=Adam(lr=lr), loss=mae, metrics=[psnr,ssim])
 
-    model_name = 'ckpt-'+str(size)+'-'+str(mode)+'-'+str(lr)
+    model_name = 'ckpt-'+str(size)+'-'+str(opt)+'-'+str(lr)+'-'+str(loss)
     history = train(model,'./model-resnet/'+model_name+'.ckpt','./log/'+model_name)
 
     #results = test(model)
