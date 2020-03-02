@@ -3,12 +3,11 @@ from keras.models import load_model
 from keras.optimizers import Adam,SGD
 from keras.losses import mse,mae,msle
 from keras.utils import multi_gpu_model
-from math import ceil
+from math import ceil,sqrt
 from os import environ,makedirs,path
 import keras.backend as K
-
-import Model 
-import Utils
+ 
+from Utils import get_file_list,DataGenerator
 
 def lr_schedule(epoch):
     """Learning Rate Schedule
@@ -52,8 +51,8 @@ def ssim(y_true , y_pred):
     return ssim / denom
 
 def train(model,patch_size,batch_multi,epochs,ckpt_path,log_path):
-    train_data = Utils.get_file_list('train')
-    val_data = Utils.get_file_list('test')
+    train_data = get_file_list('train')
+    val_data = get_file_list('test')
 
     makedirs(path.dirname(ckpt_path),exist_ok=True)
     makedirs(log_path,exist_ok=True)
@@ -61,29 +60,21 @@ def train(model,patch_size,batch_multi,epochs,ckpt_path,log_path):
     checkpoint = ModelCheckpoint(ckpt_path, monitor='loss',verbose=1, save_best_only=True)
     tensorboard = TensorBoard(log_dir=log_path)
     lr_scheduler = LearningRateScheduler(lr_schedule)
-    lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1),
+    lr_reducer = ReduceLROnPlateau(factor=sqrt(0.1),
                                    cooldown=0,
                                    patience=5,
                                    min_lr=0.5e-6)
     
-    history = model.fit_generator(Utils.DataGenerator(train_data,patch_size,batch_multi),\
+    history = model.fit_generator(DataGenerator(train_data,patch_size,batch_multi),\
                                 epochs = epochs,\
                                 verbose = 2,\
                                 shuffle = True,\
                                 callbacks=[checkpoint,tensorboard],\
-                                validation_data = Utils.DataGenerator(val_data,patch_size,batch_multi))
+                                validation_data = DataGenerator(val_data,patch_size,batch_multi))
     return history
 
-def test(model,patch_size,batch_multi):
-    test_data = Utils.get_file_list('test')
-
-    results = model.evaluate_generator(Utils.DataGenerator(test_data,patch_size,batch_multi),\
-                                       steps = len(test_data),\
-                                       verbose = 0)
-    return results
-
 def main():
-    environ["CUDA_VISIBLE_DEVICES"] = "2,3"    
+    environ["CUDA_VISIBLE_DEVICES"] = "2"    
     idx, patch_size, opt, lr, loss, batch_multi, epochs, multi_gpu=3, 256, 'adam', 1e-6, 'mae' , 2, 300, 'multi'
 
     model_name = str(multi_gpu)+'ckpt'+str(idx)+'-'+str(patch_size)+'-'+str(opt)+'-'+str(lr)+'-'+str(loss)
@@ -91,7 +82,7 @@ def main():
     model_path = 'model-resnet/model-'+str(patch_size)+'.mdl'
 
     model = load_model(model_path,compile=False)
-    model = multi_gpu_model(model,gpus=2)
+    #model = multi_gpu_model(model,gpus=2)
     model.load_weights('model-resnet/multickpt2-256-adam-1e-05-mae.ckpt')
 
     model.compile(optimizer=Adam(lr=lr), loss=mae, metrics=[psnr,ssim])

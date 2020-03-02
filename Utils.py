@@ -51,24 +51,26 @@ def h5py_loadmat(file_path:str):
     with h5py.File(file_path, 'r') as f:
         return np.array(f.get('x'),dtype=np.float32)
 
-def mat_seg(mat:np.array,multi:int):
-    if len(mat.shape) != 2:
-        return None
+def mat_seg_comb(mat:np.array,multi:int,mode):
+    if mode == 'seg':
+        if len(mat.shape) != 2:
+            return None
 
-    mat_batch = np.concatenate([np.hsplit(m,multi) for m in np.vsplit(mat,multi)])
+        mat_batch = np.concatenate([np.hsplit(m,multi) for m in np.vsplit(mat,multi)])
 
-    return mat_batch
+        return mat_batch
 
-def mat_comb(mat:np.array,multi:int):
-    if len(mat.shape) != 3 or mat.shape[0] != multi*multi:
-        return None
+    if mode == 'comb':
+        if len(mat.shape) != 3 or mat.shape[0] != multi*multi:
+            return None
 
-    mat_comb  = np.concatenate([np.concatenate(np.vsplit(m,multi),axis=-1) for m in np.vsplit(mat,multi)],axis=1)[0]
+        mat_comb  = np.concatenate([np.concatenate(np.vsplit(m,multi),axis=-1) for m in np.vsplit(mat,multi)],axis=1)[0]
 
-    return mat_comb
+        return mat_comb
+    return None
 
-def bayer_to_4ch(mat:np.array):
-    if len(mat.shape) == 3:
+def bayer_to_4ch(mat:np.array,mode):
+    if len(mat.shape) == 3 and mode == 'bayer':
 
         b,h,w = mat.shape
         m1 = mat[:,np.repeat(np.arange(0,h,2),w//2),np.tile(np.arange(0,w,2),h//2)]
@@ -78,7 +80,7 @@ def bayer_to_4ch(mat:np.array):
 
         return np.stack([m1,m2,m3,m4],-1).reshape(b,h//2,w//2,4)
 
-    if len(mat.shape) == 4:
+    if len(mat.shape) == 4 and mode == '4ch':
 
         mat_bayer = np.empty([mat.shape[0], mat.shape[1]*2, mat.shape[2]*2])
         mat_bayer[:,0::2, 0::2] = mat[:,:,:,0]
@@ -114,11 +116,11 @@ def get_sample_from_file(file_path:str,patch_size:int,batch_multi:int):
     gt_clip    = gt     [s_x:s_x+batch_multi*patch_size*2,s_y:s_y+batch_multi*patch_size*2]
     noisy_clip = noisy  [s_x:s_x+batch_multi*patch_size*2,s_y:s_y+batch_multi*patch_size*2]
 
-    gt_batch    =   mat_seg(gt_clip,    batch_multi) 
-    noisy_batch =   mat_seg(noisy_clip, batch_multi)
+    gt_batch    =   mat_seg_comb(gt_clip,    batch_multi,'seg') 
+    noisy_batch =   mat_seg_comb(noisy_clip, batch_multi,'seg')
 
-    gt_4ch    = bayer_to_4ch(gt_batch)
-    noisy_4ch = bayer_to_4ch(noisy_batch)
+    gt_4ch    = bayer_to_4ch(gt_batch,'bayer')
+    noisy_4ch = bayer_to_4ch(noisy_batch,'bayer')
 
     return noisy_4ch, gt_4ch
 
@@ -152,6 +154,26 @@ def ssim(y_true , y_pred):
     denom = (u_true ** 2 + u_pred ** 2 + c1) * (var_pred + var_true + c2)
     return ssim / denom
 
+def self_ensemble(input_4ch,mode):
+    if mode == 'ensemble':
+        output_list=[input_4ch]*4
+
+        output_list[1] = output_list[1][:,::-1,:,:]
+        output_list[2] = output_list[2][:,:,::-1,:]
+        output_list[3] = output_list[2][:,::-1,::-1,:]
+
+        output = np.concatenate(output_list,axis=0)
+        return output
+
+    if mode == 'deensemble':
+        output_list = np.vsplit(input_4ch,4)
+
+        output = np.mean(output_list,axis=0)
+
+        return output
+
+    return None
+
 from keras.utils import multi_gpu_model
 from keras.models import load_model
 from cv2 import cvtColor,COLOR_BAYER_RG2BGR,imwrite
@@ -160,25 +182,25 @@ def test(noisy,target,batch_multi):
     CKPT_PATH  = "model-resnet/multickpt1-64-adam-0.0001-mae.ckpt"
     JPG_PATH   = 'model-resnet/multickpt1-64-adam-0.0001-mae'
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"   
+    os.environ["CUDA_VISIBLE_DEVICES"] = "2"   
 
     model = load_model(MODEL_PATH,compile=False)
-    model = multi_gpu_model(model,gpus=2)
+    #model = multi_gpu_model(model,gpus=2)
     model.load_weights(CKPT_PATH)
     denoised = model.predict(noisy)
 
     print('psnr:',psnr(noisy,target),psnr(denoised,target))
     print('ssim:',ssim(noisy,target),ssim(denoised,target))
     
-    noisy    = mat_comb(bayer_to_4ch(noisy),batch_multi)
+    noisy    = mat_seg_comb(bayer_to_4ch(noisy,'4ch'),batch_multi,'comb')
     noisy    = cvtColor(np.array(noisy*1024,dtype=np.uint16),COLOR_BAYER_RG2BGR)
     imwrite(os.path.join(JPG_PATH,'noisy.jpg'),noisy)
 
-    denoised = mat_comb(bayer_to_4ch(denoised),batch_multi)
+    denoised = mat_seg_comb(bayer_to_4ch(denoised,'4ch'),batch_multi,'comb')
     denoised = cvtColor(np.array(denoised*1024,dtype=np.uint16),COLOR_BAYER_RG2BGR)
     imwrite(os.path.join(JPG_PATH,'denoised.jpg'),denoised)
     
-    target   = mat_comb(bayer_to_4ch(target),batch_multi)
+    target   = mat_seg_comb(bayer_to_4ch(target,'4ch'),batch_multi,'comb')
     target   = cvtColor(np.array(target*1024,dtype=np.uint16),COLOR_BAYER_RG2BGR)
     imwrite(os.path.join(JPG_PATH,'target.jpg'),target)
 
