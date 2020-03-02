@@ -102,5 +102,5 @@ def bayer_aug(raw: np.ndarray, flip_h: bool, flip_w: bool, transpose: bool, inpu
         out = out.T
         aug_pattern = aug_pattern[0] + aug_pattern[2] + aug_pattern[1] + aug_pattern[3]
 
-    out = bayer_unify(out, aug_pattern, target_pattern, "crop")
+    out = bayer_unify(out, aug_pattern, target_pattern, "pad")
     return out

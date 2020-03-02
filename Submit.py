@@ -11,10 +11,10 @@ import BayerUnifyAug
 MODEL_PATH = 'model-resnet/model-128.mdl'
 CKPT_PATH  = "model-resnet/multickpt1-64-adam-0.0001-mae.ckpt"
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 model = load_model(MODEL_PATH,compile=False)
-model = multi_gpu_model(model,gpus=2)
+#model = multi_gpu_model(model,gpus=2)
 model.load_weights(CKPT_PATH)
 
 def denoiser(noisy):

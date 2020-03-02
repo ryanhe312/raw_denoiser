@@ -12,7 +12,6 @@ NOISY_PATH = ['_NOISY_RAW_010.MAT','_NOISY_RAW_011.MAT']
 MODEL_BAYER = {'GP':'BGGR','IP':'RGGB','S6':'GRBG','N6':'BGGR','G4':'BGGR'}
 
 TARGET_PATTERN = 'BGGR'
-UNIFY_MODE = 'crop'
 
 DATA_TYPE = ['train','test']
 TEST_SCENE = '001'
@@ -93,49 +92,73 @@ def bayer_to_4ch(mat:np.array,mode):
     return None
 
 
-def get_sample_from_file(file_path:str,patch_size:int,batch_multi:int):
+def get_mat_from_file(file_path:str):
     noisy_path = file_path
     gt_path = file_path.replace('NOISY', 'GT')
     _,_,bayer_pattern = meta_read(file_path.split('/')[-2])
+    return h5py_loadmat(gt_path),h5py_loadmat(noisy_path),bayer_pattern
 
-    gt    = h5py_loadmat(gt_path)
-    gt    = BayerUnifyAug.bayer_unify(gt,bayer_pattern,TARGET_PATTERN,UNIFY_MODE)
+def aug_unify(img,aug_seed:int,bayer_pattern:str,target_pattern:str,unify_mode:str):
+    augment = [aug_seed%2, (aug_seed//2)%2, (aug_seed//4)%2]
 
-    noisy = h5py_loadmat(noisy_path)
-    noisy = BayerUnifyAug.bayer_unify(noisy,bayer_pattern,TARGET_PATTERN,UNIFY_MODE)
+    img    = BayerUnifyAug.bayer_aug  (img,   augment[0],augment[1],augment[2],bayer_pattern)
+    img    = BayerUnifyAug.bayer_unify(img,bayer_pattern,target_pattern,unify_mode)
 
-    augment = np.random.choice(1,3)
-    gt    = BayerUnifyAug.bayer_aug(gt,   augment[0],augment[1],augment[2],TARGET_PATTERN)
-    noisy = BayerUnifyAug.bayer_aug(noisy,augment[0],augment[1],augment[2],TARGET_PATTERN)
+    return img
 
-    w, h = gt.shape
+def random_clip(img,aug_seed:int,patch_size:int,batch_multi:int):
+    w, h = img.shape
     
     s_x = (np.random.random_integers(0, w - batch_multi*patch_size*2)//2)*2
     s_y = (np.random.random_integers(0, h - batch_multi*patch_size*2)//2)*2
     
-    gt_clip    = gt     [s_x:s_x+batch_multi*patch_size*2,s_y:s_y+batch_multi*patch_size*2]
-    noisy_clip = noisy  [s_x:s_x+batch_multi*patch_size*2,s_y:s_y+batch_multi*patch_size*2]
+    img_clip    = img     [s_x:s_x+batch_multi*patch_size*2,s_y:s_y+batch_multi*patch_size*2]
+    img_batch   = mat_seg_comb(img_clip,    batch_multi,'seg') 
 
-    gt_batch    =   mat_seg_comb(gt_clip,    batch_multi,'seg') 
-    noisy_batch =   mat_seg_comb(noisy_clip, batch_multi,'seg')
+    return img_batch
 
-    gt_4ch    = bayer_to_4ch(gt_batch,'bayer')
-    noisy_4ch = bayer_to_4ch(noisy_batch,'bayer')
+def self_ensemble(img:np.array,mode,bayer_pattern):
+    if mode == 'ensemble':
+        output = [img]*8
 
-    return noisy_4ch, gt_4ch
+        for i in range(1,8):
+            output[i] = aug_unify(output[i],i,bayer_pattern,TARGET_PATTERN,'pad')
+
+        output = np.concatenate(output,axis=0)
+        return output
+
+    if mode == 'deensemble':
+        output = np.vsplit(input_4ch,4)
+
+        for i in range(1,8):
+            output[i] = aug_unify(output[i],i,TARGET_PATTERN,bayer_pattern,'pad')
+
+        output = np.mean(output,axis=0)
+        return output
+
+    return None
 
 from keras.utils import Sequence
 class DataGenerator(Sequence):
     def __init__(self, data:list,patch_size:int,batch_multi:int):
+        self.aug_seed = 0
         self.data = data
         self.patch_size = patch_size
         self.batch_multi = batch_multi
     def __len__(self):
         return len(self.data)
     def __getitem__(self, idx):
-        return get_sample_from_file(self.data[idx],self.patch_size,self.batch_multi)
+        noisy,gt,bayer = get_mat_from_file(self.data[idx])
+        noisy = aug_unify(noisy,self.aug_seed,bayer,TARGET_PATTERN,'crop')
+        noisy = random_clip(noisy,self.aug_seed,self.patch_size,self.batch_multi)
+        noisy = bayer_to_4ch(noisy,'bayer')
+
+        gt = aug_unify(gt,self.aug_seed,bayer,TARGET_PATTERN,'crop')
+        gt = random_clip(gt,self.self.aug_seed,patch_size,self.batch_multi)
+        gt = bayer_to_4ch(gt,'bayer')
+        return noisy,gt
     def on_epoch_end(self):
-        np.random.shuffle(self.data)
+        self.aug_seed += 1
 
 def psnr(y_true, y_pred):
     rmse = np.mean(np.power(y_true.flatten() - y_pred.flatten(), 2))
@@ -154,33 +177,11 @@ def ssim(y_true , y_pred):
     denom = (u_true ** 2 + u_pred ** 2 + c1) * (var_pred + var_true + c2)
     return ssim / denom
 
-def self_ensemble(input_4ch,mode):
-    if mode == 'ensemble':
-        output_list=[input_4ch]*4
-
-        output_list[1] = output_list[1][:,::-1,:,:]
-        output_list[2] = output_list[2][:,:,::-1,:]
-        output_list[3] = output_list[2][:,::-1,::-1,:]
-
-        output = np.concatenate(output_list,axis=0)
-        return output
-
-    if mode == 'deensemble':
-        output_list = np.vsplit(input_4ch,4)
-
-        output = np.mean(output_list,axis=0)
-
-        return output
-
-    return None
-
 from keras.utils import multi_gpu_model
 from keras.models import load_model
-from cv2 import cvtColor,COLOR_BAYER_RG2BGR,imwrite
-def test(noisy,target,batch_multi):
+def predict(noisy):
     MODEL_PATH = 'model-resnet/model-64.mdl'
-    CKPT_PATH  = "model-resnet/multickpt1-64-adam-0.0001-mae.ckpt"
-    JPG_PATH   = 'model-resnet/multickpt1-64-adam-0.0001-mae'
+    CKPT_PATH  = "model-resnet/multickpt1-64-adam-0.0001-mae.ckpt'
 
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"   
 
@@ -189,28 +190,47 @@ def test(noisy,target,batch_multi):
     model.load_weights(CKPT_PATH)
     denoised = model.predict(noisy)
 
+    return denoised
+
+from cv2 import cvtColor,COLOR_BAYER_RG2BGR,imwrite
+def evaluate(noisy,denoised,target):
+    JPG_PATH   = 'model-resnet/multickpt1-64-adam-0.0001-mae'
+
     print('psnr:',psnr(noisy,target),psnr(denoised,target))
     print('ssim:',ssim(noisy,target),ssim(denoised,target))
     
-    noisy    = mat_seg_comb(bayer_to_4ch(noisy,'4ch'),batch_multi,'comb')
     noisy    = cvtColor(np.array(noisy*1024,dtype=np.uint16),COLOR_BAYER_RG2BGR)
     imwrite(os.path.join(JPG_PATH,'noisy.jpg'),noisy)
 
-    denoised = mat_seg_comb(bayer_to_4ch(denoised,'4ch'),batch_multi,'comb')
     denoised = cvtColor(np.array(denoised*1024,dtype=np.uint16),COLOR_BAYER_RG2BGR)
     imwrite(os.path.join(JPG_PATH,'denoised.jpg'),denoised)
     
-    target   = mat_seg_comb(bayer_to_4ch(target,'4ch'),batch_multi,'comb')
     target   = cvtColor(np.array(target*1024,dtype=np.uint16),COLOR_BAYER_RG2BGR)
     imwrite(os.path.join(JPG_PATH,'target.jpg'),target)
 
+def test():
+    test_data = get_file_list('test')
+    noisy,target,bayer = get_mat_from_file(test_data[0])
+    noisy  = random_clip(noisy ,0,128,1)
+    target = random_clip(target,0,128,1)
+
+    noisy_ensem = self_ensemble(noisy,'ensemble',bayer)
+    noisy_ensem = bayer_to_4ch(noisy_ensem,'bayer')
+    
+    denoised_ensem = predict(noisy_ensem)
+
+    noisy_ensem = bayer_to_4ch(noisy_ensem,'4ch')
+    denoised = self_ensemble(denoised_ensem,'deensemble',bayer)
+
+    evaluate(noisy,denoised,target)
+
+
 def main():
-    batch_multi = 4
+    batch_multi = 3
     data = DataGenerator(get_file_list('test'),64,batch_multi)
     noisy,target = data.__getitem__(10)
-    test(noisy,target,batch_multi)
-    #print('psnr:',psnr(noisy,target))
-    #print('ssim:',ssim(noisy,target))
+    print('psnr:',psnr(noisy,target))
+    print('ssim:',ssim(noisy,target))
 
 
 if __name__ == '__main__':

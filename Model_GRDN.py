@@ -165,7 +165,7 @@ def get_grdn(patch_size):
 
 	Cbam = CBAMBlock()(Deconv2)
 
-	Conv3 = Conv2D(filters = 64, \
+	Conv3 = Conv2D(filters = 4, \
 					 kernel_size=(3,3), \
 					 strides=(1, 1), \
 					 padding='same' , \
