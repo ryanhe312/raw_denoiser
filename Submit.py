@@ -5,14 +5,16 @@ import shutil
 from scipy.io.matlab.mio import savemat, loadmat
 
 from keras.models import load_model
+from keras.utils import multi_gpu_model
 import BayerUnifyAug
 
-CKPT_PATH = "./model-resnet/ckpt-128-mae-adam-2e-06.ckpt"
-MODEL_PATH = './model-resnet/model-128.mdl'
+MODEL_PATH = 'model-resnet/model-128.mdl'
+CKPT_PATH  = "model-resnet/multickpt1-64-adam-0.0001-mae.ckpt"
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 model = load_model(MODEL_PATH,compile=False)
+model = multi_gpu_model(model,gpus=2)
 model.load_weights(CKPT_PATH)
 
 def denoiser(noisy):

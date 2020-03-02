@@ -11,8 +11,6 @@ NOISY_PATH = ['_NOISY_RAW_010.MAT','_NOISY_RAW_011.MAT']
 
 MODEL_BAYER = {'GP':'BGGR','IP':'RGGB','S6':'GRBG','N6':'BGGR','G4':'BGGR'}
 
-PATCH_SIZE = 128
-BATCH_MULTI = 3
 TARGET_PATTERN = 'BGGR'
 UNIFY_MODE = 'crop'
 
@@ -24,10 +22,10 @@ def meta_read(info:str):
     scene_instance_number       = info[0]
     scene_number                = info[1]
     smartphone_code             = info[2]
-    ISO_level                   = info[3]
-    shutter_speed               = info[4]
-    illuminant_temperature      = info[5]
-    illuminant_brightness_code  = info[6]
+    #ISO_level                   = info[3]
+    #shutter_speed               = info[4]
+    #illuminant_temperature      = info[5]
+    #illuminant_brightness_code  = info[6]
 
     return scene_instance_number,scene_number,MODEL_BAYER[smartphone_code]
 
@@ -57,48 +55,28 @@ def mat_seg(mat:np.array,multi:int):
     if len(mat.shape) != 2:
         return None
 
-    mat_batch    = np.empty([multi*multi, mat.shape[0]//multi, mat.shape[1]//multi])
+    mat_batch = np.concatenate([np.hsplit(m,multi) for m in np.vsplit(mat,multi)])
 
-    for x in range(multi):
-        for y in range(multi):
-
-            s_x = x*(mat.shape[0]//multi)
-            e_x = (x+1)*(mat.shape[0]//multi)
-
-            s_y = y*(mat.shape[1]//multi)
-            e_y = (y+1)*(mat.shape[1]//multi)
-
-            mat_batch[y+x*multi,:,:] = mat[s_x:e_x,s_y:e_y]
     return mat_batch
 
 def mat_comb(mat:np.array,multi:int):
     if len(mat.shape) != 3 or mat.shape[0] != multi*multi:
         return None
 
-    mat_comb    = np.empty([mat.shape[1]*multi, mat.shape[2]*multi])
+    mat_comb  = np.concatenate([np.concatenate(np.vsplit(m,multi),axis=-1) for m in np.vsplit(mat,multi)],axis=1)[0]
 
-    for x in range(multi):
-        for y in range(multi):
-
-            s_x = x*(mat.shape[1])
-            e_x = (x+1)*(mat.shape[1])
-
-            s_y = y*(mat.shape[2])
-            e_y = (y+1)*(mat.shape[2])
-
-            mat_comb[s_x:e_x,s_y:e_y] = mat[y+x*multi,:,:]
     return mat_comb
 
 def bayer_to_4ch(mat:np.array):
     if len(mat.shape) == 3:
 
-        mat_4ch = np.empty([mat.shape[0], mat.shape[1]//2, mat.shape[2]//2, 4])
-        mat_4ch[:,:,:,0] = mat[:,0::2, 0::2]
-        mat_4ch[:,:,:,1] = mat[:,0::2, 1::2]
-        mat_4ch[:,:,:,2] = mat[:,1::2, 0::2]
-        mat_4ch[:,:,:,3] = mat[:,1::2, 1::2]
+        b,h,w = mat.shape
+        m1 = mat[:,np.repeat(np.arange(0,h,2),w//2),np.tile(np.arange(0,w,2),h//2)]
+        m2 = mat[:,np.repeat(np.arange(0,h,2),w//2),np.tile(np.arange(1,w,2),h//2)]
+        m3 = mat[:,np.repeat(np.arange(1,h,2),w//2),np.tile(np.arange(0,w,2),h//2)]
+        m4 = mat[:,np.repeat(np.arange(1,h,2),w//2),np.tile(np.arange(1,w,2),h//2)]
 
-        return mat_4ch
+        return np.stack([m1,m2,m3,m4],-1).reshape(b,h//2,w//2,4)
 
     if len(mat.shape) == 4:
 
@@ -113,7 +91,7 @@ def bayer_to_4ch(mat:np.array):
     return None
 
 
-def get_sample_from_file(file_path:str):
+def get_sample_from_file(file_path:str,patch_size:int,batch_multi:int):
     noisy_path = file_path
     gt_path = file_path.replace('NOISY', 'GT')
     _,_,bayer_pattern = meta_read(file_path.split('/')[-2])
@@ -130,14 +108,14 @@ def get_sample_from_file(file_path:str):
 
     w, h = gt.shape
     
-    s_x = (np.random.random_integers(0, w - BATCH_MULTI*PATCH_SIZE*2)//2)*2
-    s_y = (np.random.random_integers(0, h - BATCH_MULTI*PATCH_SIZE*2)//2)*2
+    s_x = (np.random.random_integers(0, w - batch_multi*patch_size*2)//2)*2
+    s_y = (np.random.random_integers(0, h - batch_multi*patch_size*2)//2)*2
     
-    gt_clip    = gt     [s_x:s_x+BATCH_MULTI*PATCH_SIZE*2,s_y:s_y+BATCH_MULTI*PATCH_SIZE*2]
-    noisy_clip = noisy  [s_x:s_x+BATCH_MULTI*PATCH_SIZE*2,s_y:s_y+BATCH_MULTI*PATCH_SIZE*2]
+    gt_clip    = gt     [s_x:s_x+batch_multi*patch_size*2,s_y:s_y+batch_multi*patch_size*2]
+    noisy_clip = noisy  [s_x:s_x+batch_multi*patch_size*2,s_y:s_y+batch_multi*patch_size*2]
 
-    gt_batch    =   mat_seg(gt_clip,    BATCH_MULTI) 
-    noisy_batch =   mat_seg(noisy_clip, BATCH_MULTI)
+    gt_batch    =   mat_seg(gt_clip,    batch_multi) 
+    noisy_batch =   mat_seg(noisy_clip, batch_multi)
 
     gt_4ch    = bayer_to_4ch(gt_batch)
     noisy_4ch = bayer_to_4ch(noisy_batch)
@@ -146,13 +124,14 @@ def get_sample_from_file(file_path:str):
 
 from keras.utils import Sequence
 class DataGenerator(Sequence):
-    def __init__(self, data:list):
+    def __init__(self, data:list,patch_size:int,batch_multi:int):
         self.data = data
+        self.patch_size = patch_size
+        self.batch_multi = batch_multi
     def __len__(self):
         return len(self.data)
     def __getitem__(self, idx):
-        file_path = self.data[idx]
-        return get_sample_from_file(file_path)
+        return get_sample_from_file(self.data[idx],self.patch_size,self.batch_multi)
     def on_epoch_end(self):
         np.random.shuffle(self.data)
 
@@ -173,32 +152,43 @@ def ssim(y_true , y_pred):
     denom = (u_true ** 2 + u_pred ** 2 + c1) * (var_pred + var_true + c2)
     return ssim / denom
 
+from keras.utils import multi_gpu_model
 from keras.models import load_model
 from cv2 import cvtColor,COLOR_BAYER_RG2BGR,imwrite
-def test(noisy,target):
-    os.environ["CUDA_VISIBLE_DEVICES"] = "2"    
-    model = load_model('./model-resnet/model-128.mdl',compile=False)
-    model.load_weights("./model-resnet/ckpt-128-mae-adam-0.0002.ckpt")
-    denoised = model.predict(noisy)
-    
-    noisy    = mat_comb(bayer_to_4ch(noisy),BATCH_MULTI)
-    noisy    = cvtColor(np.array(noisy*1024,dtype=np.uint16),COLOR_BAYER_RG2BGR)
-    imwrite('noisy.jpg',noisy)
+def test(noisy,target,batch_multi):
+    MODEL_PATH = 'model-resnet/model-64.mdl'
+    CKPT_PATH  = "model-resnet/multickpt1-64-adam-0.0001-mae.ckpt"
+    JPG_PATH   = 'model-resnet/multickpt1-64-adam-0.0001-mae'
 
-    denoised = mat_comb(bayer_to_4ch(denoised),BATCH_MULTI)
-    denoised = cvtColor(np.array(denoised*1024,dtype=np.uint16),COLOR_BAYER_RG2BGR)
-    imwrite('denoised.jpg',denoised)
+    os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"   
+
+    model = load_model(MODEL_PATH,compile=False)
+    model = multi_gpu_model(model,gpus=2)
+    model.load_weights(CKPT_PATH)
+    denoised = model.predict(noisy)
+
+    print('psnr:',psnr(noisy,target),psnr(denoised,target))
+    print('ssim:',ssim(noisy,target),ssim(denoised,target))
     
-    target   = mat_comb(bayer_to_4ch(target),BATCH_MULTI)
+    noisy    = mat_comb(bayer_to_4ch(noisy),batch_multi)
+    noisy    = cvtColor(np.array(noisy*1024,dtype=np.uint16),COLOR_BAYER_RG2BGR)
+    imwrite(os.path.join(JPG_PATH,'noisy.jpg'),noisy)
+
+    denoised = mat_comb(bayer_to_4ch(denoised),batch_multi)
+    denoised = cvtColor(np.array(denoised*1024,dtype=np.uint16),COLOR_BAYER_RG2BGR)
+    imwrite(os.path.join(JPG_PATH,'denoised.jpg'),denoised)
+    
+    target   = mat_comb(bayer_to_4ch(target),batch_multi)
     target   = cvtColor(np.array(target*1024,dtype=np.uint16),COLOR_BAYER_RG2BGR)
-    imwrite('target.jpg',target)
+    imwrite(os.path.join(JPG_PATH,'target.jpg'),target)
 
 def main():
-    data = DataGenerator(get_file_list('test'))
+    batch_multi = 4
+    data = DataGenerator(get_file_list('test'),64,batch_multi)
     noisy,target = data.__getitem__(10)
-    print(noisy.shape)
-    print('psnr:',psnr(noisy,target))
-    print('ssim:',ssim(noisy,target))
+    test(noisy,target,batch_multi)
+    #print('psnr:',psnr(noisy,target))
+    #print('ssim:',ssim(noisy,target))
 
 
 if __name__ == '__main__':

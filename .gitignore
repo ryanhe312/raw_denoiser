@@ -1,4 +1,5 @@
 .vscode/
+.abandoned/
 __pycache__/
 model-*/
 log/
