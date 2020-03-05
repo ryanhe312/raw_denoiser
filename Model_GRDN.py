@@ -21,15 +21,19 @@ def RDBlock(filters, growth_rate, dense_count):
 	def func(x):
 		out = x
 		
+		_filters = filters
 		for i in range(dense_count):
-			out = DenseBlock(filters = growth_rate)(out)
+			out = DenseBlock(filters = _filters)(out)
+			_filters += growth_rate
 
-		out = Conv2D(filters = filters, \
+		conv = Conv2D(filters = filters, \
 				     kernel_size=(1,1), \
 					 strides=(1, 1), \
 					 padding='same', \
 					 kernel_initializer='he_normal',\
 					 activation='relu')(out)
+
+		out = Add()([conv , x])
 		return out
 	return func
 
@@ -149,21 +153,23 @@ def get_grdn(patch_size):
 					kernel_initializer='he_normal',\
 					activation='relu')(Inputs)
 	
-	Conv2 = Conv2D(filters = 128, \
+	Conv2 = Conv2D(filters = 64, \
 					 kernel_size=(4,4), \
 					 strides=(2, 2), \
 					 padding='same' , \
-					 kernel_initializer='he_normal')(Conv1)
+					 kernel_initializer='he_normal',\
+					activation='relu')(Conv1)
 	
 
-	Grdbs = GGRDBlock(128,128,8,4,4)(Conv2)
+	Grdbs = GGRDBlock(64,64,8,4,4)(Conv2)
 
 	
-	Deconv2 = Conv2DTranspose(filters = 128,\
+	Deconv2 = Conv2DTranspose(filters = 64,\
 							kernel_size=(4,4), \
 							strides=(2, 2), \
 							padding='same' , \
-							kernel_initializer='he_normal')(Grdbs)
+							kernel_initializer='he_normal',\
+							activation='relu')(Grdbs)
 	
 
 	Cbam = CBAMBlock()(Deconv2)
@@ -173,7 +179,7 @@ def get_grdn(patch_size):
 					 strides=(1, 1), \
 					 padding='same' , \
 					 kernel_initializer='he_normal',\
-					 activation='relu')(Cbam)
+					activation='relu')(Cbam)
 
 	Add1 = Add()([Inputs,Conv3])
 
@@ -183,8 +189,8 @@ def get_grdn(patch_size):
 
 
 def main():
-    #environ["CUDA_VISIBLE_DEVICES"] = "2"
-	patch_size = 256
+	environ["CUDA_VISIBLE_DEVICES"] = "1"
+	patch_size = 128
 	model = get_grdn(patch_size)
 	model.summary()
 	model.save('./model-grdn/model-'+str(patch_size)+'.mdl')

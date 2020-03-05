@@ -9,30 +9,6 @@ import keras.backend as K
  
 from Utils import get_file_list,DataGenerator
 
-def lr_schedule(epoch):
-    """Learning Rate Schedule
-
-    Learning rate is scheduled to be reduced after 80, 120, 160, 180 epochs.
-    Called automatically every epoch as part of callbacks during training.
-
-    # Arguments
-        epoch (int): The number of epochs
-
-    # Returns
-        lr (float32): learning rate
-    """
-    lr = 1e-3
-    if epoch > 180:
-        lr *= 0.5e-3
-    elif epoch > 160:
-        lr *= 1e-3
-    elif epoch > 120:
-        lr *= 1e-2
-    elif epoch > 80:
-        lr *= 1e-1
-    print('Learning rate: ', lr)
-    return lr
-
 def psnr(y_true, y_pred):
     rmse = K.mean(K.pow(K.flatten(y_true - y_pred), 2))
     return 10 * K.log(1.0 / rmse)/K.log(10.)
@@ -50,6 +26,15 @@ def ssim(y_true , y_pred):
     denom = (u_true ** 2 + u_pred ** 2 + c1) * (var_pred + var_true + c2)
     return ssim / denom
 
+def lr_schedule(epoch):
+    lr = 3e-4
+    if epoch > 100:
+        lr *= 0.1
+    elif epoch > 200:
+        lr *= 0.1
+    print('Learning rate: ', lr)
+    return lr
+
 def train(model,patch_size,batch_multi,epochs,ckpt_path,log_path):
     train_data = get_file_list('train')
     val_data = get_file_list('test')
@@ -61,29 +46,29 @@ def train(model,patch_size,batch_multi,epochs,ckpt_path,log_path):
     tensorboard = TensorBoard(log_dir=log_path)
     lr_scheduler = LearningRateScheduler(lr_schedule)
     lr_reducer = ReduceLROnPlateau(factor=sqrt(0.1),
-                                   cooldown=0,
-                                   patience=5,
-                                   min_lr=0.5e-6)
+                                   monitor='loss',
+                                   patience=16,
+                                   min_lr=1e-6)
     
     history = model.fit_generator(DataGenerator(train_data,patch_size,batch_multi),\
                                 epochs = epochs,\
                                 verbose = 2,\
                                 shuffle = True,\
-                                callbacks=[checkpoint,tensorboard],\
+                                callbacks=[checkpoint,tensorboard,lr_reducer],\
                                 validation_data = DataGenerator(val_data,patch_size,batch_multi))
     return history
 
 def main():
-    environ["CUDA_VISIBLE_DEVICES"] = "2"    
-    idx, patch_size, opt, lr, loss, batch_multi, epochs, multi_gpu=3, 256, 'adam', 1e-6, 'mae' , 2, 300, 'multi'
+    environ["CUDA_VISIBLE_DEVICES"] = "1"    
+    idx, patch_size, opt, lr, loss, batch_multi, epochs, multi_gpu=1, 128, 'adam', 3e-4, 'mae' , 2, 100, ''
 
     model_name = str(multi_gpu)+'ckpt'+str(idx)+'-'+str(patch_size)+'-'+str(opt)+'-'+str(lr)+'-'+str(loss)
-    ckpt_path  = 'model-resnet/'+model_name
-    model_path = 'model-resnet/model-'+str(patch_size)+'.mdl'
+    ckpt_path  = 'model-grdn/'+model_name
+    model_path = 'model-grdn/model-'+str(patch_size)+'.mdl'
 
     model = load_model(model_path,compile=False)
     #model = multi_gpu_model(model,gpus=2)
-    model.load_weights('model-resnet/multickpt2-256-adam-1e-05-mae.ckpt')
+    #model.load_weights('')
 
     model.compile(optimizer=Adam(lr=lr), loss=mae, metrics=[psnr,ssim])
     history = train(model,patch_size,batch_multi,epochs,ckpt_path+'.ckpt',ckpt_path)

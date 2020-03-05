@@ -96,21 +96,23 @@ def get_mat_from_file(file_path:str):
     noisy_path = file_path
     gt_path = file_path.replace('NOISY', 'GT')
     _,_,bayer_pattern = meta_read(file_path.split('/')[-2])
+
     return h5py_loadmat(gt_path),h5py_loadmat(noisy_path),bayer_pattern
 
 def aug_unify(img,aug_seed:int,bayer_pattern:str,target_pattern:str,unify_mode:str):
     augment = [aug_seed%2, (aug_seed//2)%2, (aug_seed//4)%2]
 
-    img    = BayerUnifyAug.bayer_aug  (img,   augment[0],augment[1],augment[2],bayer_pattern)
     img    = BayerUnifyAug.bayer_unify(img,bayer_pattern,target_pattern,unify_mode)
+    img    = BayerUnifyAug.bayer_aug  (img,   augment[0],augment[1],augment[2],target_pattern)
 
     return img
 
 def random_clip(img,aug_seed:int,patch_size:int,batch_multi:int):
+    np.random.seed(aug_seed)
     w, h = img.shape
     
-    s_x = (np.random.random_integers(0, w - batch_multi*patch_size*2)//2)*2
-    s_y = (np.random.random_integers(0, h - batch_multi*patch_size*2)//2)*2
+    s_x = (np.random.randint(0, w - batch_multi*patch_size*2)//2)*2
+    s_y = (np.random.randint(0, h - batch_multi*patch_size*2)//2)*2
     
     img_clip    = img     [s_x:s_x+batch_multi*patch_size*2,s_y:s_y+batch_multi*patch_size*2]
     img_batch   = mat_seg_comb(img_clip,    batch_multi,'seg') 
@@ -128,7 +130,7 @@ def self_ensemble(img:np.array,mode,bayer_pattern):
         return output
 
     if mode == 'deensemble':
-        output = np.vsplit(input_4ch,4)
+        output = np.vsplit(img,4)
 
         for i in range(1,8):
             output[i] = aug_unify(output[i],i,TARGET_PATTERN,bayer_pattern,'pad')
@@ -149,16 +151,20 @@ class DataGenerator(Sequence):
         return len(self.data)
     def __getitem__(self, idx):
         noisy,gt,bayer = get_mat_from_file(self.data[idx])
-        noisy = aug_unify(noisy,self.aug_seed,bayer,TARGET_PATTERN,'crop')
-        noisy = random_clip(noisy,self.aug_seed,self.patch_size,self.batch_multi)
+
+        random_seed = np.random.random_integers(65535)
+        noisy = aug_unify(noisy,random_seed,bayer,TARGET_PATTERN,'crop')
+        noisy = random_clip(noisy,random_seed,self.patch_size,self.batch_multi)
         noisy = bayer_to_4ch(noisy,'bayer')
 
-        gt = aug_unify(gt,self.aug_seed,bayer,TARGET_PATTERN,'crop')
-        gt = random_clip(gt,self.self.aug_seed,patch_size,self.batch_multi)
+        gt = aug_unify(gt,random_seed,bayer,TARGET_PATTERN,'crop')
+        gt = random_clip(gt,random_seed,self.patch_size,self.batch_multi)
         gt = bayer_to_4ch(gt,'bayer')
+
         return noisy,gt
     def on_epoch_end(self):
-        self.aug_seed += 1
+        #self.aug_seed += 1
+        np.random.shuffle(self.data)
 
 def psnr(y_true, y_pred):
     rmse = np.mean(np.power(y_true.flatten() - y_pred.flatten(), 2))
@@ -181,7 +187,7 @@ from keras.utils import multi_gpu_model
 from keras.models import load_model
 def predict(noisy):
     MODEL_PATH = 'model-resnet/model-64.mdl'
-    CKPT_PATH  = "model-resnet/multickpt1-64-adam-0.0001-mae.ckpt'
+    CKPT_PATH  = "model-resnet/multickpt1-64-adam-0.0001-mae.ckpt"
 
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"   
 
@@ -227,8 +233,9 @@ def test():
 
 def main():
     batch_multi = 3
-    data = DataGenerator(get_file_list('test'),64,batch_multi)
+    data = DataGenerator(get_file_list('test'),128,batch_multi)
     noisy,target = data.__getitem__(10)
+    print(noisy.shape)
     print('psnr:',psnr(noisy,target))
     print('ssim:',ssim(noisy,target))
 
